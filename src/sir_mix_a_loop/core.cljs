@@ -27,8 +27,8 @@
       (let [{:keys [length-in-ms samples]} loop-definition
             {:keys [buffer-source buffer-object]} loop-player
             frame-count (calculate-frame-count length-in-ms sample-rate)
-            pitch (* (js/Math.random) 0.1)]
-        (print pitch)
+            pitch (* (js/Math.random) 0.1)
+            pitch 0.04]
         ; for left and right
         (doseq [c (range 2)]
           (let [buffer (.getChannelData buffer-object c)]
