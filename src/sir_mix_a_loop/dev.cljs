@@ -20,9 +20,15 @@
   (print "Mixing.")
   (mix-loop/update-loop looper my-loop))
 
+; create our user interface
+(set! (.-innerHTML (js/document.getElementById "app"))
+      (apply str (doall (for [e (range 16)] (str "<span id='container-" e "'><input id='tick-" e "' type='checkbox'></input></span>")))))
+
+; bind events
+
+
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on
   ;; your application
   ;; (swap! app-state update-in [:__figwheel_counter] inc)
 )
-

@@ -1,2 +1,18 @@
-/* some style */
+#app {
+  max-width: 600px;
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+  font-family: "courier", monospace;
+  padding-top: 2em;
+}
+
+@keyframes spin {
+	to { transform: rotate(1turn); }
+}
+
+#spinner {
+  animation: spin 0.5s infinite;
+  font-size: 2em;
+}
 
