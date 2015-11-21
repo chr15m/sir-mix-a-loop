@@ -11,6 +11,11 @@
 (defn calculate-frame-count [length-in-ms sample-rate]
   (* (* length-in-ms 0.001) sample-rate))
 
+(defn sum-sample-buffers-at-time [samples t-seconds]
+  (doseq [{:keys [data start-seconds length-seconds volume pan sample-sample-rate] :or {volume 1.0 pan 0.0 sample-sample-rate sample-rate}} samples]
+    (if (and (> t-seconds start-seconds) (< t-seconds (+ start-seconds length-seconds)))
+      (* (aget data (* (- t-seconds start-seconds) sample-sample-rate)) volume))))
+
 (defn make-loop-player [length-in-ms]
   ; HTML5 audio buffer source
   (let [buffer-source (.createBufferSource actx)
@@ -26,17 +31,19 @@
 (defn update-loop [loop-player loop-definition]
   (let [{:keys [length-in-ms samples]} loop-definition
         {:keys [buffer-source buffer-object]} loop-player
-        frame-count (calculate-frame-count length-in-ms sample-rate)
-        pitch (* (js/Math.random) 0.1)
-        pitch 0.04]
-    ; for left and right
+        frame-count (calculate-frame-count length-in-ms sample-rate)]
+    ; for left and right channels
     (doseq [c (range 2)]
+      ; grab the raw js audio buffer for this channel to write to
       (let [buffer (.getChannelData buffer-object c)]
+        ; for each individual sample in the count
         (doseq [s (range frame-count)]
-          ; mutate the audio buffer!
-          (aset buffer s (Math.sin (* s pitch))))))
+          (let [t-seconds (/ s sample-rate)]
+            ; mutate the audio buffer to add this sample value
+            (aset buffer s
+                  (sum-sample-buffers-at-time samples t-seconds))))))
     ; force browsers to refresh the buffer
     (try
       (set! (.-buffer buffer-source) buffer-object)
-      ; catch this: Uncaught TypeError: Failed to set the 'buffer' property on 'AudioBufferSourceNode'
+      ; catch this on Chrome: "Uncaught TypeError: Failed to set the 'buffer' property on 'AudioBufferSourceNode'" w@ it works anyway
       (catch :default e e))))
