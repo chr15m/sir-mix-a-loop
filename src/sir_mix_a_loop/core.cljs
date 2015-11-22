@@ -28,9 +28,11 @@
     -1500))
 
 (defn sum-sample-buffers-at-time [samples t-seconds]
-  (doseq [{:keys [data start-seconds length-seconds volume pan sample-sample-rate] :or {volume 1.0 pan 0.0 sample-sample-rate sample-rate}} samples]
-    (if (and (> t-seconds start-seconds) (< t-seconds (+ start-seconds length-seconds)))
-      (* (aget data (* (- t-seconds start-seconds) sample-sample-rate)) volume))))
+  (apply +
+         (doall (for [{:keys [data start-seconds length-seconds volume pan sample-sample-rate] :or {volume 1.0 pan 0.0 sample-sample-rate sample-rate}} samples]
+                  (if (and (> t-seconds start-seconds) (< t-seconds (+ start-seconds length-seconds)))
+                    (* (aget data (Math.round (* (- t-seconds start-seconds) sample-sample-rate))) volume)
+                    0)))))
 
 (defn make-loop-player [length-in-ms]
   ; HTML5 audio buffer source
