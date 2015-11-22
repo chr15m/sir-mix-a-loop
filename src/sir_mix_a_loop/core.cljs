@@ -11,6 +11,19 @@
 (defn calculate-frame-count [length-in-ms sample-rate]
   (* (* length-in-ms 0.001) sample-rate))
 
+; taken from pure-data
+(defn mtof "Convert MIDI note to frequency (Hz)." [m]
+  (cond
+    (<= m -1500) 0
+    (> m 1499) (mtof 1499)
+    :else (* (js/Math.exp (* m .0577622650)) 8.17579891564)))
+
+; taken from pure-data
+(defn ftom "Convert frequency (Hz) to MIDI note." [f]
+  (if (> f 0)
+    (* (js/Math.log (* f .12231220585)) 17.3123405046)
+    -1500))
+
 (defn sum-sample-buffers-at-time [samples t-seconds]
   (doseq [{:keys [data start-seconds length-seconds volume pan sample-sample-rate] :or {volume 1.0 pan 0.0 sample-sample-rate sample-rate}} samples]
     (if (and (> t-seconds start-seconds) (< t-seconds (+ start-seconds length-seconds)))
