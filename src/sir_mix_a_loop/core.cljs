@@ -8,6 +8,9 @@
 
 (defonce sample-rate (if actx (.-sampleRate actx) nil))
 
+(defn get-audio-time []
+  (.-currentTime actx))
+
 (defn calculate-frame-count [length-in-ms sample-rate]
   (* (* length-in-ms 0.001) sample-rate))
 
