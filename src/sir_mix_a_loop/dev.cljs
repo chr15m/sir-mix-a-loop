@@ -1,76 +1,87 @@
 (ns ^:figwheel-always sir-mix-a-loop.dev
-    (:require [sir-mix-a-loop.core :as mix-loop]))
+    (:require [sir-mix-a-loop.core :as looper]))
 
 (enable-console-print!)
 
 (println "Sir Mix-a-loop dev mode.")
 
-(defonce samples (atom []))
-(def ticks 16)
-(def my-loop {:length-in-ms 800})
-
-; get our channel to play a loop on
-(defonce channel
-  (atom
-    (if mix-loop/audio?
-      (mix-loop/make-channel)
-      (js/alert "Audio not available in your browser, sorry!"))))
-
-; if we have audio available
-; mix the first loop
-(when @channel
-  (print "Mixing.")
-  (swap! channel mix-loop/update-channel-data my-loop)
-  (swap! channel mix-loop/play-channel))
+(def player (atom nil))
+(def ticks-length 16)
 
 ; *** LOOP REGENERATE *** ;
 
+; taken from pure-data
+(defn mtof [m]
+  (cond
+    (<= m -1500) 0
+    (> m 1499) (mtof 1499)
+    :else (* (js/Math.exp (* m .0577622650)) 8.17579891564)))
+
 ; make a sample array of bonk sound
 (defn make-bonk [p length]
-  (let [sample-count (* mix-loop/sample-rate length)
-        frequency-hz (mix-loop/mtof (+ 60 (mod (* p 5) 23)))
-        result (doall (for [x (range sample-count)]
+  (let [sample-count (* looper/sample-rate length)
+        frequency-hz (mtof (+ 60 (mod (* p 5) 23)))
+        result (vec (doall (for [x (range sample-count)]
                         ; envelope linear decay
                         (* 0.5 (/ (- (- sample-count 1) x) sample-count)
                            ; sine at the midi pitch specified
-                           (js/Math.sin (* (* (/ x mix-loop/sample-rate) frequency-hz) (* js/Math.PI 2))))))]
-    (print (last result))
-    (print sample-count)
+                           (js/Math.sin (* (* (/ x looper/sample-rate) frequency-hz) (* js/Math.PI 2)))))))]
     result))
 
-; function that gets run when the loop is changed
-(defn samples-watcher
-  [watcher-key atom-changed old-state new-state]
-  (swap! channel mix-loop/update-channel-data
-         (assoc my-loop :samples @samples)))
+(defn make-samples []
+  (doall (filter
+           ; don't add samples that are nil
+           #(not (nil? %))
+           ; create a sample for each tick in the range
+           (for [t (range ticks-length)]
+             ; if the checkbox is checked
+             (if (-> (js/document.getElementById (str "tick-" t)) .-checked)
+               ; create a new sample to go at this timeslot
+               {:data (make-bonk t 0.5)
+                :tick t})))))
 
-; when the samples atom is changed, update the loop
-(defonce watcher
-  (add-watch samples :loop-updater samples-watcher))
+(defn update-sample-data []
+  (swap! player assoc-in [:pattern :samples] (make-samples)))
 
 ; *** UI **** ;
 
 ; create our user interface
 (set! (.-innerHTML (js/document.getElementById "app"))
-      (apply str (doall (for [e (range ticks)] (str "<span id='container-" e "'><input id='tick-" e "' type='checkbox'></input></span>")))))
-
-; what happens when one of the checkboxes is clicked
-(defn make-checkbox-event-fn [e]
-  (fn [ev]
-    (reset! samples
-            (doall (filter #(not (nil? %)) (for [e (range ticks)]
-                                             (if (-> (js/document.getElementById (str "tick-" e)) .-checked)
-                                               {:data (clj->js (make-bonk e 0.5))
-                                                :start-seconds (* e 0.05)
-                                                :length-seconds 0.5})))))))
+      (apply str (doall (for [e (range ticks-length)] (str "<span id='container-" e "'><input id='tick-" e "' type='checkbox'></input></span>")))))
 
 ; bind events to the page
-(doseq [e (range ticks)]
+(doseq [e (range ticks-length)]
   (.addEventListener
     (js/document.getElementById (str "tick-" e))
     "click"
-    (make-checkbox-event-fn e)
+    (fn [ev] (update-sample-data))
     false))
+
+(defn set-class [n c]
+  (set! (-> (js/document.getElementById n) .-className) c))
+
+(defonce watcher
+  (add-watch player
+             :player-watcher
+             (fn [k reference old-state new-state]
+               (when (not (= (:tick old-state) (:tick new-state)))
+                 (doseq [e (range ticks-length)]
+                   (set-class (str "container-" e) ""))
+                 (set-class (str "container-" (mod (:tick new-state) ticks-length)) "tick")))))
+
+; *** Launch *** ;
+
+(defn launch [new-loop-player]
+  (reset! player new-loop-player)
+  ; set up our new loop at 180 BPM and empty samples data
+  (swap! player assoc-in [:pattern] {:bpm 180 :ticks-length ticks-length :samples []})
+  ; kick off the player loop
+  (looper/play! player))
+
+; get a player (channel) to play a loop on
+(if looper/audio?
+  (launch (looper/make-loop-player))
+  (js/alert "Audio not available in your browser, sorry!"))
 
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on
