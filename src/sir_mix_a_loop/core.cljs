@@ -106,7 +106,7 @@
 (defn make-onended-fn [node]
   (fn [ev] (set! (.-ended node) true)))
 
-(defn schedule-nodes-in-time-range [{audio-node-output :audio-node-output
+(defn schedule-nodes-in-time-range! [{audio-node-output :audio-node-output
                                      {:keys [samples ticks-length]} :pattern
                                      {:keys [audio-clock-started]} :timing  :as player :or {audio-node-output (.-destination actx)}}
                                     audio-clock-from audio-clock-to]
@@ -181,7 +181,8 @@
                            ; play notes up to the next look-ahead time with a limit of 1 frame ahead of now
                            audio-clock-to (min (+ audio-clock-last-checked scheduler-look-ahead-time) (+ audio-clock-now scheduler-look-ahead-time))
                            ; schedule all of the audio nodes that need to play soon
-                           new-nodes-set (schedule-nodes-in-time-range @player-atom audio-clock-from audio-clock-to)
+                           ; idempotent but side effect of creating audio node objects
+                           new-nodes-set (schedule-nodes-in-time-range! @player-atom audio-clock-from audio-clock-to)
                            ; remove any audio nodes that have already finished playing
                            played-nodes-set (remove-played-nodes @player-atom)
                            ; remove the nodes that have finished playing
