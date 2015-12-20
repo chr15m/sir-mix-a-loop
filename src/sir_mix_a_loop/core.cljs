@@ -146,7 +146,7 @@
 (defn play!
   "Start a loop player."
   [player-atom]
-  (let [{{:keys [audio-clock-started tick]} :timing} @player-atom
+  (let [{original-id :id {:keys [audio-clock-started tick]} :timing} @player-atom
         audio-clock-now (get-audio-time)]
     ; if we're not already playing
     (when (not audio-clock-started)
@@ -160,39 +160,43 @@
                ; context for each frame
                (let [{{:keys [audio-clock-last-checked
                               audio-clock-started
-                              audio-nodes
-                              id]} :timing} @player-atom]
-                 ; keep looping until stop! or pause! have unset timing settings
-                 (when audio-clock-started
-                   (let [audio-clock-now (get-audio-time)
-                         ; what tick the audio clock thinks we're playing right now
-                         tick-now (tick-at-time @player-atom audio-clock-now)
-                         ; play notes from last check (to a limit of 1 frame behind some CPU delay occurred)
-                         audio-clock-from (max audio-clock-last-checked (- audio-clock-now scheduler-look-ahead-time))
-                         ; play notes up to the next look-ahead time with a limit of 1 frame ahead of now
-                         audio-clock-to (min (+ audio-clock-last-checked scheduler-look-ahead-time) (+ audio-clock-now scheduler-look-ahead-time))
-                         ; schedule all of the audio nodes that need to play soon
-                         new-nodes-set (schedule-nodes-in-time-range @player-atom audio-clock-from audio-clock-to)
-                         ; remove any audio nodes that have already finished playing
-                         played-nodes-set (remove-played-nodes @player-atom)
-                         ; remove the nodes that have finished playing
-                         remaining-nodes-set (apply disj audio-nodes played-nodes-set)
-                         ; add in the new nodes we just started
-                         remaining-nodes-set (apply conj remaining-nodes-set new-nodes-set)]
-                     ; detect underruns
-                     (if (not (= audio-clock-from audio-clock-last-checked))
-                       (print "*** Audio underrun! ***"))
-                     ; update the player atom itself with the changes we have made
-                     (swap! player-atom #(-> %
-                                             ; update the set of nodes that are currently playing
-                                             (assoc :audio-nodes remaining-nodes-set)
-                                             ; update the last checked time to where we checked to
-                                             (assoc-in [:timing :audio-clock-last-checked] audio-clock-to)
-                                             ; update the current tick for UIs etc.
-                                             (assoc :tick tick-now)))
-                     ; wait until the next elapsed look-ahead-time
-                     (<! (timeout-worker (* scheduler-poll-time 1000)))
-                     (recur)))))))
+                              audio-nodes]} :timing
+                      id :id} @player-atom]
+                 ; if the user has bailed this atom, abandon ship
+                 (if (= id original-id)
+                   ; keep looping until stop! or pause! have unset timing settings
+                   (when audio-clock-started
+                     (let [audio-clock-now (get-audio-time)
+                           ; what tick the audio clock thinks we're playing right now
+                           tick-now (tick-at-time @player-atom audio-clock-now)
+                           ; play notes from last check (to a limit of 1 frame behind some CPU delay occurred)
+                           audio-clock-from (max audio-clock-last-checked (- audio-clock-now scheduler-look-ahead-time))
+                           ; play notes up to the next look-ahead time with a limit of 1 frame ahead of now
+                           audio-clock-to (min (+ audio-clock-last-checked scheduler-look-ahead-time) (+ audio-clock-now scheduler-look-ahead-time))
+                           ; schedule all of the audio nodes that need to play soon
+                           new-nodes-set (schedule-nodes-in-time-range @player-atom audio-clock-from audio-clock-to)
+                           ; remove any audio nodes that have already finished playing
+                           played-nodes-set (remove-played-nodes @player-atom)
+                           ; remove the nodes that have finished playing
+                           remaining-nodes-set (apply disj audio-nodes played-nodes-set)
+                           ; add in the new nodes we just started
+                           remaining-nodes-set (apply conj remaining-nodes-set new-nodes-set)]
+                       ; detect underruns
+                       (if (not (= audio-clock-from audio-clock-last-checked))
+                         (print "*** Audio underrun! ***"))
+                       ; update the player atom itself with the changes we have made
+                       (swap! player-atom #(-> %
+                                               ; update the set of nodes that are currently playing
+                                               (assoc :audio-nodes remaining-nodes-set)
+                                               ; update the last checked time to where we checked to
+                                               (assoc-in [:timing :audio-clock-last-checked] audio-clock-to)
+                                               ; update the current tick for UIs etc.
+                                               (assoc :tick tick-now)))
+                       ; wait until the next elapsed look-ahead-time
+                       (<! (timeout-worker (* scheduler-poll-time 1000)))
+                       (recur)))
+                   ; TODO: cleanup the old audio nodes somehow (watching last atom?)
+                   )))))
   @player-atom)
 
 (defn pause!
@@ -200,9 +204,8 @@
   [player-atom]
   (when (:next-tick-time @player-atom)
     (swap! player-atom #(-> %
-                            (dissoc :timing)
-                            ; ok to have a side-effect here because it's idempotent
-                            (stop-all-audio-nodes!))))
+                            (dissoc :timing)))
+    (stop-all-audio-nodes! (@player-atom :audio-nodes)))
   @player-atom)
 
 (defn stop!

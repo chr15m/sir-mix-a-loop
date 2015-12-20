@@ -5,7 +5,7 @@
 
 (println "Sir Mix-a-loop dev mode.")
 
-(def player (atom nil))
+(defonce player (atom nil))
 (def ticks-length 16)
 
 ; *** LOOP REGENERATE *** ;
