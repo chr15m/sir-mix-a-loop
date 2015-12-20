@@ -2,6 +2,13 @@
   (:require [cljs.core.async :refer [chan <! close!]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
+; TODO: 
+; * optimisation
+;  Allow the use of Float32Array and try buffer.copyToChannel(source, channelNumber) or buffer.set(typed-array)
+;  sort the samples into a dictionary by tick number for faster access inside the loop
+;  only run the update if the tick range being calculated has actually changed
+; * reload idempotent instances
+
 ; constants
 (def scheduler-look-ahead-time 0.3)
 (def scheduler-poll-time 0.05)
