@@ -122,7 +122,7 @@
                   (set! (.-onended node) (make-onended-fn node))
                   ; trigger it to play at the correct time
                   (if (< (- audio-clock-time-to-trigger-node (.-currentTime actx)) 0) (print "*** Audio sample underrun! ***"))
-                  (.start node (max (- audio-clock-time-to-trigger-node (.-currentTime actx)) 0))
+                  (.start node audio-clock-time-to-trigger-node)
                   {:node node :source-data s})))))
 
 (defn remove-played-nodes [{:keys [audio-nodes]}]
