@@ -125,11 +125,11 @@
                   (.start node audio-clock-time-to-trigger-node)
                   {:node node :source-data s})))))
 
-(defn remove-played-nodes [{:keys [audio-nodes]}]
-  ; return a list of nodes that are still playing
-  (into #{} (remove #(.-ended (:node %)) audio-nodes)))
+(defn remove-played-nodes [audio-nodes]
+  ; return a list of nodes that have finished playing
+  (into #{} (filter #(.-ended (:node %)) audio-nodes)))
 
-(defn stop-all-audio-nodes! [{:keys [audio-nodes]}]
+(defn stop-all-audio-nodes! [audio-nodes]
   (doseq [{:keys [node]} audio-nodes]
     (when (not (.-ended node))
       ; tell the node to cut audio immediately
@@ -163,11 +163,11 @@
                               (assoc-in [:timing :audio-clock-last-checked] audio-clock-now)
                               (assoc-in [:timing :tick-offset] (or tick 0))))
       ; note spawning task in a go loop subthread
-      (go-loop []
+      (go-loop [previous-audio-nodes #{}]
                ; context for each frame
                (let [{{:keys [audio-clock-last-checked
-                              audio-clock-started
-                              audio-nodes]} :timing
+                              audio-clock-started]} :timing
+                      audio-nodes :audio-nodes
                       id :id} @player-atom]
                  ; if the user has bailed this atom, abandon ship
                  (if (= id original-id)
@@ -184,27 +184,27 @@
                            ; idempotent but side effect of creating audio node objects
                            new-nodes-set (schedule-nodes-in-time-range! @player-atom audio-clock-from audio-clock-to)
                            ; remove any audio nodes that have already finished playing
-                           played-nodes-set (remove-played-nodes @player-atom)
+                           played-nodes-set (remove-played-nodes audio-nodes)
                            ; remove the nodes that have finished playing
-                           remaining-nodes-set (apply disj audio-nodes played-nodes-set)
+                           remaining-nodes-removed-played-set (apply disj audio-nodes played-nodes-set)
                            ; add in the new nodes we just started
-                           remaining-nodes-set (apply conj remaining-nodes-set new-nodes-set)]
+                           remaining-nodes-added-new-set (apply conj remaining-nodes-removed-played-set new-nodes-set)]
                        ; detect underruns
                        (if (not (= audio-clock-from audio-clock-last-checked))
                          (print "*** Audio underrun! ***"))
                        ; update the player atom itself with the changes we have made
                        (swap! player-atom #(-> %
                                                ; update the set of nodes that are currently playing
-                                               (assoc :audio-nodes remaining-nodes-set)
+                                               (assoc :audio-nodes remaining-nodes-added-new-set)
                                                ; update the last checked time to where we checked to
                                                (assoc-in [:timing :audio-clock-last-checked] audio-clock-to)
                                                ; update the current tick for UIs etc.
                                                (assoc :tick tick-now)))
                        ; wait until the next elapsed look-ahead-time
                        (<! (timeout-worker (* scheduler-poll-time 1000)))
-                       (recur)))
-                   ; TODO: cleanup the old audio nodes somehow (watching last atom?)
-                   )))))
+                       (recur remaining-nodes-added-new-set)))
+                   ; cleanup playing audio nodes
+                   (stop-all-audio-nodes! previous-audio-nodes))))))
   @player-atom)
 
 (defn pause!
