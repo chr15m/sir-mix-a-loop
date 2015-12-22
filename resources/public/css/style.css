@@ -17,6 +17,13 @@ span.tick {
   border-color: #8f8;
 }
 
+button {
+  margin-top: 0.5em;
+  min-width: 4em;
+  padding: 0.25em;
+  display: inline-block;
+}
+
 @keyframes spin {
 	to { transform: rotate(1turn); }
 }

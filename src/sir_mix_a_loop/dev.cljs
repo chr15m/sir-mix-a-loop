@@ -1,5 +1,7 @@
 (ns ^:figwheel-always sir-mix-a-loop.dev
-    (:require [sir-mix-a-loop.core :as looper]))
+    (:require [sir-mix-a-loop.core :as looper]
+              [cljs.core.async :refer [<! timeout]])
+    (:require-macros [cljs.core.async.macros :refer [go]]))
 
 (enable-console-print!)
 
@@ -64,7 +66,9 @@
 
 ; create our user interface
 (set! (.-innerHTML (js/document.getElementById "app"))
-      (apply str (doall (for [e (range ticks-length)] (str "<span id='container-" e "'><input id='tick-" e "' type='checkbox'></input></span>")))))
+      (str
+        (apply str (doall (for [e (range ticks-length)] (str "<span id='container-" e "'><input id='tick-" e "' type='checkbox'></input></span>"))))
+        (str "<br/><button id='play-pause'>▶</button> <button id='stop'>◼</button>")))
 
 ; bind events to the page
 (doseq [e (range ticks-length)]
@@ -73,6 +77,27 @@
     "click"
     (fn [ev] (update-sample-data))
     false))
+
+; play/pause button
+(.addEventListener (js/document.getElementById "play-pause")
+                   "click"
+                   (fn [ev]
+                     (if (@player :timing)
+                       (do
+                         (set! (.-innerHTML ev.target) "▶")
+                         (looper/pause! player))
+                       (do
+                         (set! (.-innerHTML ev.target) "Ⅱ")
+                         (looper/play! player))))
+                   false)
+
+; stop button
+(.addEventListener (js/document.getElementById "stop")
+                   "click"
+                   (fn [ev]
+                     (set! (.-innerHTML (js/document.getElementById "play-pause")) "▶")
+                     (looper/stop! player))
+                   false)
 
 (defn set-class [n c]
   (set! (-> (js/document.getElementById n) .-className) c))
@@ -91,9 +116,7 @@
 (defn launch [new-loop-player]
   (reset! player new-loop-player)
   ; set up our new loop at 180 BPM and empty samples data
-  (swap! player assoc-in [:pattern] {:bpm 180 :ticks-length ticks-length :samples []})
-  ; kick off the player loop
-  (looper/play! player))
+  (swap! player assoc-in [:pattern] {:bpm 180 :ticks-length ticks-length :samples []}))
 
 ; get a player (channel) to play a loop on
 (if looper/audio?
