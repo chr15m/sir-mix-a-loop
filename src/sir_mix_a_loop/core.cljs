@@ -2,10 +2,6 @@
   (:require [cljs.core.async :refer [chan <! close!]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
-; TODO: 
-; * optimisation
-;  sort the samples into a dictionary by tick number for faster access inside the loop
-
 ; constants
 (def scheduler-look-ahead-time 0.5)
 (def scheduler-poll-time 0.05)
@@ -70,17 +66,14 @@
                     t]
   (+ (* (- t tick-offset) (tick-length bpm)) audio-clock-started))
 
-(defn get-samples-in-tick-range [samples ticks-loop-length tick-range]
-  (let [ticks-range tick-range]
-    (let [result 
-          (apply concat
-                 (map
-                   (fn [s]
-                     (remove nil? (for [tick ticks-range]
-                                    (when (= (s :tick) (mod tick ticks-loop-length))
-                                      (assoc s :tick tick)))))
-                   samples))]
-      result)))
+(defn compute-tick-lookups [{:keys [samples ticks-length bpm]}]
+  (loop [lookups {} samples-left samples]
+    (let [sample (first samples-left)
+          tick (:tick sample)
+          lookup (conj (get lookups tick) sample)]
+      (if sample
+        (recur (assoc lookups tick lookup) (rest samples-left))
+        lookups))))
 
 ; *** Audio node management *** ;
 
@@ -112,21 +105,21 @@
   (fn [ev] (set! (.-ended node) true)))
 
 (defn schedule-nodes-in-time-range! [{audio-node-output :audio-node-output
-                                     {:keys [samples ticks-length]} :pattern
-                                     {:keys [audio-clock-started]} :timing  :as player :or {audio-node-output (.-destination actx)}}
-                                    tick-range]
-  (let [samples-between-ticks (get-samples-in-tick-range samples ticks-length tick-range)]
-    (into #{} (for [s samples-between-ticks]
-                (let [node (make-sample-player s)
-                      audio-clock-time-to-trigger-node (time-at-tick player (:tick s))]
-                  ; connect it to the audio context output
-                  (.connect node audio-node-output)
-                  ; set the ended flag when ended
-                  (set! (.-onended node) (make-onended-fn node))
-                  ; trigger it to play at the correct time
-                  (if (< (- audio-clock-time-to-trigger-node (.-currentTime actx)) 0) (print "*** Audio sample underrun! ***"))
-                  (.start node audio-clock-time-to-trigger-node)
-                  {:node node :source-data s})))))
+                                      {:keys [samples ticks-length]} :pattern
+                                      {:keys [audio-clock-started]} :timing  :as player :or {audio-node-output (.-destination actx)}}
+                                     tick-range
+                                     tick-lookups]
+  (into #{} (for [tick tick-range s (get tick-lookups (mod tick ticks-length))]
+              (let [node (make-sample-player s)
+                    audio-clock-time-to-trigger-node (time-at-tick player tick)]
+                ; connect it to the audio context output
+                (.connect node audio-node-output)
+                ; set the ended flag when ended
+                (set! (.-onended node) (make-onended-fn node))
+                ; trigger it to play at the correct time
+                (if (< (- audio-clock-time-to-trigger-node (.-currentTime actx)) 0) (print "*** Audio sample underrun! ***"))
+                (.start node audio-clock-time-to-trigger-node)
+                {:node node :source-data s}))))
 
 (defn remove-played-nodes [audio-nodes]
   ; return a list of nodes that have finished playing
@@ -166,30 +159,36 @@
                               (assoc-in [:timing :audio-clock-last-checked] audio-clock-now)
                               (assoc-in [:timing :tick-offset] (or tick 0))))
       ; note spawning task in a go loop subthread
-      (go-loop [previous-audio-nodes #{} previous-tick-range ()]
+      (go-loop [previous-audio-nodes #{}
+                previous-tick-range ()
+                previous-pattern {}
+                previous-tick-lookups {}]
                ; context for each frame
                (let [{{:keys [audio-clock-last-checked
                               audio-clock-started]} :timing
                       audio-nodes :audio-nodes
-                      id :id} @player-atom]
+                      id :id
+                      pattern :pattern} @player-atom
+                      player @player-atom]
                  ; if the user has bailed this atom, abandon ship
                  (if (= id original-id)
                    ; keep looping until stop! or pause! have unset timing settings
                    (when audio-clock-started
                      (let [audio-clock-now (get-audio-time)
                            ; what tick the audio clock thinks we're playing right now
-                           tick-now (tick-at-time @player-atom audio-clock-now)
+                           tick-now (tick-at-time player audio-clock-now)
                            ; play notes from last check (to a limit of 1 frame behind some CPU delay occurred)
                            audio-clock-from (max audio-clock-last-checked (- audio-clock-now scheduler-look-ahead-time))
                            ; play notes up to the next look-ahead time with a limit of 1 frame ahead of now
                            audio-clock-to (min (+ audio-clock-last-checked scheduler-look-ahead-time) (+ audio-clock-now scheduler-look-ahead-time))
                            ; work out the range of ticks we need to consider currently in our look-ahead mixing
-                           tick-from (tick-at-time @player-atom audio-clock-from)
-                           tick-to (tick-at-time @player-atom audio-clock-to)
+                           tick-from (tick-at-time player audio-clock-from)
+                           tick-to (tick-at-time player audio-clock-to)
                            tick-range (range tick-from tick-to)
-                           ; schedule all of the audio nodes that need to play soon
-                           ; idempotent but side effect of creating audio node objects
-                           new-nodes-set (when (not (= tick-range previous-tick-range)) (schedule-nodes-in-time-range! @player-atom tick-range))
+                           ; if the source pattern has changed recompute the tick lookups table
+                           tick-lookups (if (= pattern previous-pattern) previous-tick-lookups (compute-tick-lookups pattern))
+                           ; if the tick range has changed, schedule all of the audio nodes that need to play in the new range
+                           new-nodes-set (when (not (= tick-range previous-tick-range)) (schedule-nodes-in-time-range! player tick-range tick-lookups))
                            ; remove any audio nodes that have already finished playing
                            played-nodes-set (remove-played-nodes audio-nodes)
                            ; remove the nodes that have finished playing
@@ -209,7 +208,7 @@
                                                (assoc :tick tick-now)))
                        ; wait until the next elapsed look-ahead-time
                        (<! (timeout-worker (* scheduler-poll-time 1000)))
-                       (recur remaining-nodes-added-new-set tick-range)))
+                       (recur remaining-nodes-added-new-set tick-range pattern tick-lookups)))
                    ; cleanup playing audio nodes
                    (stop-all-audio-nodes! previous-audio-nodes))))))
   @player-atom)
