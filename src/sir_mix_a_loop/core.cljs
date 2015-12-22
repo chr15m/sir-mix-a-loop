@@ -4,9 +4,7 @@
 
 ; TODO: 
 ; * optimisation
-;  Allow the use of Float32Array and try buffer.copyToChannel(source, channelNumber) or buffer.set(typed-array)
 ;  sort the samples into a dictionary by tick number for faster access inside the loop
-;  only run the update if the tick range being calculated has actually changed
 
 ; constants
 (def scheduler-look-ahead-time 0.4)
@@ -72,8 +70,8 @@
                     t]
   (+ (* (- t tick-offset) (tick-length bpm)) audio-clock-started))
 
-(defn get-samples-in-tick-range [samples ticks-loop-length tick-from tick-to]
-  (let [ticks-range (range tick-from tick-to)]
+(defn get-samples-in-tick-range [samples ticks-loop-length tick-range]
+  (let [ticks-range tick-range]
     (let [result 
           (apply concat
                  (map
@@ -116,10 +114,8 @@
 (defn schedule-nodes-in-time-range! [{audio-node-output :audio-node-output
                                      {:keys [samples ticks-length]} :pattern
                                      {:keys [audio-clock-started]} :timing  :as player :or {audio-node-output (.-destination actx)}}
-                                    audio-clock-from audio-clock-to]
-  (let [tick-from (tick-at-time player audio-clock-from)
-        tick-to (tick-at-time player audio-clock-to)
-        samples-between-ticks (get-samples-in-tick-range samples ticks-length tick-from tick-to)]
+                                    tick-range]
+  (let [samples-between-ticks (get-samples-in-tick-range samples ticks-length tick-range)]
     (into #{} (for [s samples-between-ticks]
                 (let [node (make-sample-player s)
                       audio-clock-time-to-trigger-node (time-at-tick player (:tick s))]
@@ -170,7 +166,7 @@
                               (assoc-in [:timing :audio-clock-last-checked] audio-clock-now)
                               (assoc-in [:timing :tick-offset] (or tick 0))))
       ; note spawning task in a go loop subthread
-      (go-loop [previous-audio-nodes #{}]
+      (go-loop [previous-audio-nodes #{} previous-tick-range ()]
                ; context for each frame
                (let [{{:keys [audio-clock-last-checked
                               audio-clock-started]} :timing
@@ -187,9 +183,13 @@
                            audio-clock-from (max audio-clock-last-checked (- audio-clock-now scheduler-look-ahead-time))
                            ; play notes up to the next look-ahead time with a limit of 1 frame ahead of now
                            audio-clock-to (min (+ audio-clock-last-checked scheduler-look-ahead-time) (+ audio-clock-now scheduler-look-ahead-time))
+                           ; work out the range of ticks we need to consider currently in our look-ahead mixing
+                           tick-from (tick-at-time @player-atom audio-clock-from)
+                           tick-to (tick-at-time @player-atom audio-clock-to)
+                           tick-range (range tick-from tick-to)
                            ; schedule all of the audio nodes that need to play soon
                            ; idempotent but side effect of creating audio node objects
-                           new-nodes-set (schedule-nodes-in-time-range! @player-atom audio-clock-from audio-clock-to)
+                           new-nodes-set (when (not (= tick-range previous-tick-range)) (schedule-nodes-in-time-range! @player-atom tick-range))
                            ; remove any audio nodes that have already finished playing
                            played-nodes-set (remove-played-nodes audio-nodes)
                            ; remove the nodes that have finished playing
@@ -209,7 +209,7 @@
                                                (assoc :tick tick-now)))
                        ; wait until the next elapsed look-ahead-time
                        (<! (timeout-worker (* scheduler-poll-time 1000)))
-                       (recur remaining-nodes-added-new-set)))
+                       (recur remaining-nodes-added-new-set tick-range)))
                    ; cleanup playing audio nodes
                    (stop-all-audio-nodes! previous-audio-nodes))))))
   @player-atom)
