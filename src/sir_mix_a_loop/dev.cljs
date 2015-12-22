@@ -28,6 +28,22 @@
                            (js/Math.sin (* (* (/ x looper/sample-rate) frequency-hz) (* js/Math.PI 2)))))))]
     result))
 
+; make a Float32Array of bonk sound
+(defn make-bonk-float32 [p length]
+  (let [sample-count (* looper/sample-rate length)
+        frequency-hz (mtof (+ 60 (mod (* p 5) 23)))
+        buffer (js/Float32Array. sample-count)
+        result (loop [x 0]
+                 (when (< x sample-count)
+                   (aset buffer x
+                         (* 0.5
+                            ; envelope linear decay
+                            (/ (- (- sample-count 1) x) sample-count)
+                            ; sine at the midi pitch specified
+                            (js/Math.sin (* (* (/ x looper/sample-rate) frequency-hz) (* js/Math.PI 2)))))
+                   (recur (inc x))))]
+    buffer))
+
 (defn make-samples []
   (doall (filter
            ; don't add samples that are nil
@@ -37,7 +53,7 @@
              ; if the checkbox is checked
              (if (-> (js/document.getElementById (str "tick-" t)) .-checked)
                ; create a new sample to go at this timeslot
-               {:data (make-bonk t 0.5)
+               {:data (make-bonk-float32 t 1.0)
                 :tick t})))))
 
 (defn update-sample-data []
