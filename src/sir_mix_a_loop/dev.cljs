@@ -113,14 +113,16 @@
 
 ; *** Launch *** ;
 
-(defn launch [new-loop-player]
-  (reset! player new-loop-player)
-  ; set up our new loop at 180 BPM and empty samples data
-  (swap! player assoc-in [:pattern] {:bpm 180 :ticks-length ticks-length :samples []}))
-
-; get a player (channel) to play a loop on
+; check if the user's browser has webaudio capability
 (if looper/audio?
-  (launch (looper/make-loop-player))
+  (do
+    ; create a new player and set our atom
+    (reset! player
+            (looper/make-loop-player))
+    ; set up our new loop at 180 BPM and empty samples data
+    (swap! player assoc-in [:pattern] {:bpm 180
+                                       :ticks-length ticks-length
+                                       :samples []}))
   (js/alert "Audio not available in your browser, sorry!"))
 
 (defn on-js-reload []
