@@ -89,15 +89,23 @@
 
 (defn make-sample-player [{:keys [data] :as sample-definition}]
   ; HTML5 audio buffer source
-  (let [frame-count (count data)
+  (let [native-array (= (type data) js/Float32Array)
+        frame-count (if native-array (.-length data) (count data))
         buffer-source (.createBufferSource actx)
         buffer-object (.createBuffer actx 1 frame-count sample-rate)]
     ; raw js audio buffer for this channel to write to
     (let [buffer-dest (.getChannelData buffer-object 0)]
-      ; for each individual sample in the count
-      (doseq [s (range frame-count)]
-        ; mutate the audio buffer to add this sample value
-        (aset buffer-dest s (nth data s))))
+      ; if we have been passed a native typed array
+      (if native-array
+        ; do a fast memcpy instead
+        (.set buffer-dest data)
+        ; otherwise we have to copy it manually
+        ; for each individual sample in the count
+        (loop [s 0]
+          (when (< s frame-count)
+            ; mutate the audio buffer to add this sample value
+            (aset buffer-dest s (nth data s))
+            (recur (inc s))))))
     ; set the buffer source on our new objects
     (set! (.-buffer buffer-source) buffer-object)
     ; pass back the audio node thing that is playable
