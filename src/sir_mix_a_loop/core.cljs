@@ -7,7 +7,6 @@
 ;  Allow the use of Float32Array and try buffer.copyToChannel(source, channelNumber) or buffer.set(typed-array)
 ;  sort the samples into a dictionary by tick number for faster access inside the loop
 ;  only run the update if the tick range being calculated has actually changed
-; * reload idempotent instances
 
 ; constants
 (def scheduler-look-ahead-time 0.4)

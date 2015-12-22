@@ -22,10 +22,11 @@
   (let [sample-count (* looper/sample-rate length)
         frequency-hz (mtof (+ 60 (mod (* p 5) 23)))
         result (vec (doall (for [x (range sample-count)]
-                        ; envelope linear decay
-                        (* 0.5 (/ (- (- sample-count 1) x) sample-count)
-                           ; sine at the midi pitch specified
-                           (js/Math.sin (* (* (/ x looper/sample-rate) frequency-hz) (* js/Math.PI 2)))))))]
+                             (* 0.5
+                                ; envelope linear decay
+                                (/ (- (- sample-count 1) x) sample-count)
+                                ; sine at the midi pitch specified
+                                (js/Math.sin (* (* (/ x looper/sample-rate) frequency-hz) (* js/Math.PI 2)))))))]
     result))
 
 ; make a Float32Array of bonk sound
