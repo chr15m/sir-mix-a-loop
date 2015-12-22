@@ -23,3 +23,17 @@ WebAudio looping sequencer in ClojureScript.
 	    ; start our player
 	    (looper/play! player))
 
+Pausing playback:
+
+	(looper/pause! player)
+
+Stopping playback (resets to tick 0):
+
+	(looper/stop! player)
+
+Updating the pattern's sample sequence:
+
+	(swap! player assoc-in [:pattern :samples]
+	       [{:tick 0 :data (make-sin-wave 440 0.1)}
+	        {:tick 3 :data (make-sin-wave 880 0.2)}])
+
