@@ -160,7 +160,7 @@
 (defn play!
   "Start a loop player."
   [player-atom]
-  (let [{original-id :id {:keys [audio-clock-started tick]} :timing} @player-atom
+  (let [{original-id :id tick :tick {:keys [audio-clock-started]} :timing} @player-atom
         audio-clock-now (get-audio-time)]
     ; if we're not already playing
     (when (not audio-clock-started)
@@ -217,9 +217,8 @@
 (defn pause!
   "Pause a loop player."
   [player-atom]
-  (when (:next-tick-time @player-atom)
-    (swap! player-atom #(-> %
-                            (dissoc :timing)))
+  (when (@player-atom :timing)
+    (swap! player-atom dissoc :timing)
     (stop-all-audio-nodes! (@player-atom :audio-nodes)))
   @player-atom)
 
@@ -227,10 +226,10 @@
   "Stop a loop player."
   [player-atom]
   ; tell the old audio loop to exit
-  (when (:next-tick-time @player-atom)
+  (when (@player-atom :timing)
     ; stop the audio engine from playing
-    (pause! player-atom)
-    ; reset the tick to the start
-    (swap! player-atom assoc :tick 0))
+    (pause! player-atom))
+  ; reset the tick to the start
+  (swap! player-atom assoc :tick 0)
   @player-atom)
 
