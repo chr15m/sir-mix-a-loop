@@ -2,6 +2,10 @@
   (:require [cljs.core.async :refer [chan <! close!]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
+; TODO:
+;  * render-to-buffer function to render a static pattern to a loopable buffer for efficiency (e.g. in-game playback)
+;  * length parameter to cutoff sounds early
+
 ; constants
 (def scheduler-look-ahead-time 0.5)
 (def scheduler-poll-time 0.05)
