@@ -175,12 +175,14 @@
                    ; keep looping until stop! or pause! have unset timing settings
                    (when audio-clock-started
                      (let [audio-clock-now (get-audio-time)
+                           ; how far to look ahead - at a minimum look ahead of one tick plus a bit of padding
+                           look-ahead-time (max scheduler-look-ahead-time (+ (tick-length (pattern :bpm)) 0.1))
                            ; what tick the audio clock thinks we're playing right now
                            tick-now (tick-at-time player audio-clock-now)
                            ; play notes from last check (to a limit of 1 frame behind some CPU delay occurred)
-                           audio-clock-from (max audio-clock-last-checked (- audio-clock-now scheduler-look-ahead-time))
+                           audio-clock-from (max audio-clock-last-checked (- audio-clock-now look-ahead-time))
                            ; play notes up to the next look-ahead time with a limit of 1 frame ahead of now
-                           audio-clock-to (min (+ audio-clock-last-checked scheduler-look-ahead-time) (+ audio-clock-now scheduler-look-ahead-time))
+                           audio-clock-to (min (+ audio-clock-last-checked look-ahead-time) (+ audio-clock-now look-ahead-time))
                            ; work out the range of ticks we need to consider currently in our look-ahead mixing
                            tick-from (tick-at-time player audio-clock-from)
                            tick-to (tick-at-time player audio-clock-to)
