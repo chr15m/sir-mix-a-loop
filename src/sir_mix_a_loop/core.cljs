@@ -10,7 +10,7 @@
 ; * reload idempotent instances
 
 ; constants
-(def scheduler-look-ahead-time 0.3)
+(def scheduler-look-ahead-time 0.4)
 (def scheduler-poll-time 0.05)
 
 ; id for each channel
